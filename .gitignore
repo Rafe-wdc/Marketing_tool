@@ -1,0 +1,40 @@
+# --- Secrets: NEVER commit these -------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Python virtual environments -------------------------------------------
+.venv/
+venv/
+ENV/
+env/
+
+# --- Python build / cache ---------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node (frontend examples) ----------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# --- Logs & runtime ---------------------------------------------------------
+*.log
+nohup.out
+
+# --- Editors / OS -----------------------------------------------------------
+.claude/settings.local.json
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
