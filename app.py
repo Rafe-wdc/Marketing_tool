@@ -36,6 +36,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 PORT = int(os.environ.get("PORT", "3001"))
 MAX_DRAFT = 4000  # guard against absurdly large input
+MAX_SCRIPT = 8000  # ad scripts can be longer than a persona draft
 
 if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY is missing. Copy .env.example to .env and set it.")
@@ -145,6 +146,67 @@ class GapItem(BaseModel):
 
 class GapResponse(BaseModel):
     gaps: List[GapItem]
+    fallback: bool = False
+
+
+# ---- Script Lab: test / review an ad script -------------------------------
+class ScriptTestRequest(BaseModel):
+    """An ad script plus the sales-team selections, reviewed against the brand's
+    full Brand Brain context (answers + context)."""
+    script: str = ""                             # the ad script to review
+    marketingAngle: Optional[str] = None         # e.g. "Original", "Fear-based", "Story"
+    funnelStage: Optional[str] = None            # e.g. "Cold, Top of Funnel"
+    adSource: Optional[str] = None               # e.g. "meta"
+    region: Optional[str] = None
+    adName: Optional[str] = None                 # metadata, echoed for reference
+    adNumber: Optional[str] = None
+    answers: BrandBrainAnswers = Field(default_factory=BrandBrainAnswers)  # Brand Brain
+    context: BrandContext = Field(default_factory=BrandContext)           # business info
+
+
+class EmotionalAngle(BaseModel):
+    label: str = ""      # e.g. "Story / narrative with aspirational underpinning"
+    status: str = ""     # "ANGLE WORKS" | "ANGLE WEAK" | "ANGLE OFF"
+    critique: str = ""
+
+
+class DimensionScores(BaseModel):
+    attention: int = 0                   # each 0-100
+    resonance: int = 0
+    conversion: int = 0
+    creative: int = 0
+    marketing_angle_execution: int = 0   # how consistently the chosen angle is expressed
+
+
+class ContextAlignment(BaseModel):
+    """Did the script follow the brief? Each is "Strong" | "Moderate" | "Weak"."""
+    brand_voice_fit: str = ""
+    funnel_stage_fit: str = ""
+    marketing_angle_fit: str = ""
+
+
+class SectionScore(BaseModel):
+    section: str         # "Hook", "Problem / Tension", ...
+    score: int           # 0-10
+    comment: str = ""
+
+
+class Improvement(BaseModel):
+    title: str
+    why_it_matters: str = ""
+    suggested_rewrite: str = ""
+    metrics_impacted: str = ""
+
+
+class ScriptTestResponse(BaseModel):
+    overall_score: int                 # 0-100
+    verdict: str                       # one-line summary
+    verdict_band: str                  # banded rating label
+    emotional_angle: EmotionalAngle
+    context_alignment: ContextAlignment  # did it follow the brief?
+    dimension_scores: DimensionScores
+    section_breakdown: List[SectionScore]
+    improvements: List[Improvement]
     fallback: bool = False
 
 
@@ -493,6 +555,319 @@ async def analyze_gaps(body: GapRequest):
             ),
         ]
         return GapResponse(gaps=fallback_gaps[:max_gaps], fallback=True)
+
+
+# ---------------------------------------------------------------------------
+# Script Lab: review an ad script against the brand's Brand Brain context
+# ---------------------------------------------------------------------------
+SCRIPT_SYSTEM_INSTRUCTION = """
+You are a senior direct-response ad-script critic. You review one ad script FOR A
+SPECIFIC BRAND and return a structured, honest critique the sales team can act on.
+
+You are given the brand's full context (persona, voice, offer, funnel, goal,
+competitors) PLUS the creative brief the script was written to: the target FUNNEL
+STAGE and the chosen MARKETING ANGLE.
+
+TREAT THE MARKETING ANGLE AS A CREATIVE CONSTRAINT, NOT JUST ONE OUTPUT FIELD. The
+user selected that angle as the instruction for HOW the script should persuade. So
+you must judge BOTH: (1) how good the script is, and (2) whether it stayed faithful
+to the chosen angle from the hook through the CTA. If the script drifts into a
+different persuasion style, say exactly WHERE it shifts, WHY that weakens the brief,
+and HOW to bring it back in line with the selected angle.
+
+MARKETING ANGLE DEFINITIONS (use these to judge alignment):
+- Original: present the offer clearly, without a single dominant persuasion framework.
+- Authority: build trust through expertise, credentials, experience, or leadership.
+- Urgency: motivate via scarcity, deadlines, or immediate action.
+- Social Proof: persuade via adoption, testimonials, community, or popularity.
+- Pain Point: lead with the audience's frustration, risk, or unmet need.
+- Aspiration: lead with the future identity, transformation, or desired outcome.
+
+TREAT THE FUNNEL STAGE AS A STRATEGIC CONSTRAINT TOO. Judge whether the script suits
+where the audience is in the buying journey. A strong script written for the WRONG
+funnel stage should lose points because it fails the brief.
+
+FUNNEL STAGE DEFINITIONS (use these to judge alignment):
+- Cold (Top of Funnel): audience is unfamiliar with the brand. Earn attention fast,
+  introduce the problem clearly, assume NO prior knowledge, and aim for awareness or
+  curiosity rather than a big commitment.
+- Warm (Middle of Funnel): audience already knows the brand or has engaged before.
+  Build trust, deepen understanding, address objections, and reinforce why this
+  solution is worth considering.
+- Hot (Bottom of Funnel): audience is close to deciding. Reduce final friction with
+  strong proof, clear value, risk reversal where appropriate, and a direct, confident CTA.
+- Retargeting: audience interacted before but did not convert. Acknowledge familiarity,
+  remind them of the value, address likely hesitation, and give a compelling reason to
+  return and act now.
+
+Rules:
+- Judge the script for THIS brand and THIS audience - never generically. Reward copy
+  that fits the brand voice and speaks to the persona's real pains/desires.
+- Judge it at the given FUNNEL STAGE using the definitions above - a script that
+  assumes the wrong level of audience awareness for its stage loses points.
+- emotional_angle = the headline verdict on the chosen angle: label (name the angle),
+  status (ANGLE WORKS / ANGLE WEAK / ANGLE OFF), critique (does the script actually
+  execute this angle, and where does it succeed or drift into another style).
+- section_breakdown: score each section 0-10 with a 1-3 sentence comment. EVERY comment
+  must judge writing quality AND alignment to the brief. Angles are strategic directions
+  that can COMBINE, not exclusive boxes - a section may layer another persuasion style
+  (e.g. Authority + Social Proof) and that is GOOD copywriting, so do NOT penalize it for
+  merely ALSO using another style. Only penalize when a section ABANDONS or REPLACES the
+  chosen angle so the selected angle is essentially absent (e.g. an "Authority" brief but
+  the section is purely Aspirational) - that scores no higher than 5/10 even if the prose
+  is polished, because it fails the brief. Also lower the score if the section assumes
+  audience awareness inconsistent with the funnel stage (e.g. "as you already know" to a
+  COLD audience, or a weak "follow us" CTA to a HOT audience). Sections that clearly
+  express the chosen angle AND are well-written earn 8-10. Keep the score consistent with
+  the comment - never give a high score with a negative comment. Sections, in order:
+  "Hook", "Problem / Tension", "Solution / Offer", "Social Proof / Credibility",
+  "Call to Action", "Pacing & Tightness".
+- dimension_scores (each 0-100): attention (stops the scroll / earns the view),
+  resonance (hits the persona emotionally), conversion (does the offer + CTA drive the
+  APPROPRIATE action FOR THE FUNNEL STAGE - cold = a low-commitment ask like watch/register;
+  hot = a direct ask like book/buy; the wrong ask for the stage lowers this score),
+  creative (freshness / execution quality), marketing_angle_execution (how CONSISTENTLY
+  the script expresses the CHOSEN angle end-to-end - score low if it drifts to another
+  persuasion style).
+- context_alignment: rate how well the script honours the brief, each exactly
+  "Strong", "Moderate", or "Weak": brand_voice_fit, funnel_stage_fit, marketing_angle_fit.
+- overall_score is 0-100. Bands: 90-100 "No changes needed", 70-89 "Minor tweaks only",
+  50-69 "Needs work before going live", 0-49 "Rewrite required". Set verdict_band and a
+  short human verdict line (call out angle drift if that is the main issue).
+- improvements: the highest-leverage fixes. Each must point at a REAL weak line, explain
+  why_it_matters, give a concrete suggested_rewrite in the brand's voice AND in the chosen
+  marketing angle, and name the metrics_impacted (e.g. "3-sec view rate", "retention",
+  "CTR", "CPL"). No generic advice, no filler.
+- Never invent brand facts that are not in the provided context.
+""".strip()
+
+SCRIPT_RESPONSE_SCHEMA = types.Schema(
+    type=types.Type.OBJECT,
+    properties={
+        "overall_score": types.Schema(type=types.Type.INTEGER),
+        "verdict": types.Schema(type=types.Type.STRING),
+        "verdict_band": types.Schema(type=types.Type.STRING),
+        "emotional_angle": types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "label": types.Schema(type=types.Type.STRING),
+                "status": types.Schema(type=types.Type.STRING),
+                "critique": types.Schema(type=types.Type.STRING),
+            },
+            required=["label", "status", "critique"],
+        ),
+        "context_alignment": types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "brand_voice_fit": types.Schema(type=types.Type.STRING),
+                "funnel_stage_fit": types.Schema(type=types.Type.STRING),
+                "marketing_angle_fit": types.Schema(type=types.Type.STRING),
+            },
+            required=["brand_voice_fit", "funnel_stage_fit", "marketing_angle_fit"],
+        ),
+        "dimension_scores": types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "attention": types.Schema(type=types.Type.INTEGER),
+                "resonance": types.Schema(type=types.Type.INTEGER),
+                "conversion": types.Schema(type=types.Type.INTEGER),
+                "creative": types.Schema(type=types.Type.INTEGER),
+                "marketing_angle_execution": types.Schema(type=types.Type.INTEGER),
+            },
+            required=["attention", "resonance", "conversion", "creative",
+                      "marketing_angle_execution"],
+        ),
+        "section_breakdown": types.Schema(
+            type=types.Type.ARRAY,
+            items=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "section": types.Schema(type=types.Type.STRING),
+                    "score": types.Schema(type=types.Type.INTEGER),
+                    "comment": types.Schema(type=types.Type.STRING),
+                },
+                required=["section", "score", "comment"],
+            ),
+        ),
+        "improvements": types.Schema(
+            type=types.Type.ARRAY,
+            items=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "title": types.Schema(type=types.Type.STRING),
+                    "why_it_matters": types.Schema(type=types.Type.STRING),
+                    "suggested_rewrite": types.Schema(type=types.Type.STRING),
+                    "metrics_impacted": types.Schema(type=types.Type.STRING),
+                },
+                required=["title", "why_it_matters", "suggested_rewrite", "metrics_impacted"],
+            ),
+        ),
+    },
+    required=[
+        "overall_score", "verdict", "verdict_band", "emotional_angle",
+        "context_alignment", "dimension_scores", "section_breakdown", "improvements",
+    ],
+)
+
+
+def _clamp(value, lo, hi, default=0):
+    try:
+        return max(lo, min(int(value), hi))
+    except (TypeError, ValueError):
+        return default
+
+
+def _band_for(score: int) -> str:
+    if score >= 90:
+        return "No changes needed"
+    if score >= 70:
+        return "Minor tweaks only"
+    if score >= 50:
+        return "Needs work before going live"
+    return "Rewrite required"
+
+
+def build_script_meta_block(body: "ScriptTestRequest") -> str:
+    rows = [
+        ("Marketing angle", body.marketingAngle),
+        ("Funnel stage", body.funnelStage),
+        ("Ad source", body.adSource),
+        ("Region", body.region),
+        ("Ad name", body.adName),
+        ("Ad number", body.adNumber),
+    ]
+    lines = [f"- {label}: {value}" for label, value in rows if value and str(value).strip()]
+    return "\n".join(lines) if lines else "(no selections provided)"
+
+
+@app.post("/api/script-lab/test-script", response_model=ScriptTestResponse)
+async def test_script(body: ScriptTestRequest):
+    script = (body.script or "")[:MAX_SCRIPT].strip()
+
+    prompt = "\n".join(
+        [
+            "BUSINESS CONTEXT:",
+            build_context_block(body.context),
+            "",
+            "BRAND BRAIN (what this brand stands for):",
+            build_answers_block(body.answers),
+            "",
+            "SALES-TEAM SELECTIONS FOR THIS TEST:",
+            build_script_meta_block(body),
+            "",
+            "AD SCRIPT TO REVIEW:",
+            script or "(empty)",
+            "",
+            "Review the script and return the structured critique following your rules.",
+        ]
+    )
+
+    try:
+        response = await client.aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SCRIPT_SYSTEM_INSTRUCTION,
+                temperature=0.4,
+                response_mime_type="application/json",
+                response_schema=SCRIPT_RESPONSE_SCHEMA,
+                # This critique is large + reasoned, so it needs longer than the
+                # onboarding endpoints. "Test Script" is a deliberate click with a
+                # loading state, so a longer wait is acceptable.
+                http_options=types.HttpOptions(timeout=45_000),
+            ),
+        )
+
+        parsed = json.loads(response.text)
+
+        sections = [
+            SectionScore(
+                section=str(s.get("section", "")).strip(),
+                score=_clamp(s.get("score"), 0, 10),
+                comment=str(s.get("comment", "")).strip(),
+            )
+            for s in (parsed.get("section_breakdown") or [])
+            if str(s.get("section", "")).strip()
+        ]
+        if not sections:
+            raise ValueError("model returned no section breakdown")
+
+        overall = _clamp(parsed.get("overall_score"), 0, 100, default=50)
+        ea = parsed.get("emotional_angle") or {}
+        ca = parsed.get("context_alignment") or {}
+        ds = parsed.get("dimension_scores") or {}
+        improvements = [
+            Improvement(
+                title=str(i.get("title", "")).strip(),
+                why_it_matters=str(i.get("why_it_matters", "")).strip(),
+                suggested_rewrite=str(i.get("suggested_rewrite", "")).strip(),
+                metrics_impacted=str(i.get("metrics_impacted", "")).strip(),
+            )
+            for i in (parsed.get("improvements") or [])
+            if str(i.get("title", "")).strip()
+        ]
+
+        return ScriptTestResponse(
+            overall_score=overall,
+            verdict=str(parsed.get("verdict") or "").strip(),
+            # Trust the band only if it's one of ours; else derive from the score.
+            verdict_band=str(parsed.get("verdict_band") or "").strip() or _band_for(overall),
+            emotional_angle=EmotionalAngle(
+                label=str(ea.get("label", "")).strip(),
+                status=str(ea.get("status", "")).strip(),
+                critique=str(ea.get("critique", "")).strip(),
+            ),
+            context_alignment=ContextAlignment(
+                brand_voice_fit=str(ca.get("brand_voice_fit", "")).strip(),
+                funnel_stage_fit=str(ca.get("funnel_stage_fit", "")).strip(),
+                marketing_angle_fit=str(ca.get("marketing_angle_fit", "")).strip(),
+            ),
+            dimension_scores=DimensionScores(
+                attention=_clamp(ds.get("attention"), 0, 100),
+                resonance=_clamp(ds.get("resonance"), 0, 100),
+                conversion=_clamp(ds.get("conversion"), 0, 100),
+                creative=_clamp(ds.get("creative"), 0, 100),
+                marketing_angle_execution=_clamp(ds.get("marketing_angle_execution"), 0, 100),
+            ),
+            section_breakdown=sections,
+            improvements=improvements,
+        )
+
+    except Exception as err:  # noqa: BLE001 - never block the sales team
+        # Non-blocking fallback: a neutral scorecard so the UI still renders.
+        print(f"test-script failed: {err}")
+        neutral_sections = [
+            SectionScore(section=name, score=5, comment="Couldn't analyze automatically - review manually.")
+            for name in [
+                "Hook", "Problem / Tension", "Solution / Offer",
+                "Social Proof / Credibility", "Call to Action", "Pacing & Tightness",
+            ]
+        ]
+        return ScriptTestResponse(
+            overall_score=50,
+            verdict="Couldn't complete the AI review - try again.",
+            verdict_band="Needs work before going live",
+            emotional_angle=EmotionalAngle(
+                label=body.marketingAngle or "",
+                status="",
+                critique="The angle could not be assessed automatically.",
+            ),
+            context_alignment=ContextAlignment(),
+            dimension_scores=DimensionScores(
+                attention=50, resonance=50, conversion=50, creative=50,
+                marketing_angle_execution=50,
+            ),
+            section_breakdown=neutral_sections,
+            improvements=[
+                Improvement(
+                    title="Re-run the analysis",
+                    why_it_matters="The automated review did not complete for this script.",
+                    suggested_rewrite="Click Regenerate, or review the script manually against the brand voice.",
+                    metrics_impacted="",
+                )
+            ],
+            fallback=True,
+        )
 
 
 if __name__ == "__main__":
