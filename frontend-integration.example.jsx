@@ -273,3 +273,109 @@ export function useGapAnalysis() {
 // On finish, save `picks` (the extra answers) onto the brand record so the
 // downstream AI gets the fuller context.
 // -----------------------------------------------------------------------------
+
+
+// =============================================================================
+// FEATURE #4 — Script Lab: Test Script
+//
+// Sales team pastes an ad script, picks a marketing angle + funnel stage, and
+// clicks "Test Script". The endpoint reviews it against the brand's Brand Brain
+// context (which your app loads by brand_id and passes as answers + context) and
+// returns a structured critique. "Regenerate" just calls testScript() again.
+//
+// Expect ~15-25s — always show a loading state.
+// =============================================================================
+
+const SCRIPT_URL =
+  import.meta?.env?.VITE_SCRIPT_URL ||
+  "http://localhost:3001/api/script-lab/test-script";
+
+export function useTestScript() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null); // the full ScriptTestResponse
+
+  // `brand` = the brand's stored context ({ answers, context }) that YOUR app
+  // loaded from the DB by brand_id. `form` = the Script Lab form selections.
+  async function testScript({ brand, form }) {
+    const payload = {
+      script: form.script,
+      marketingAngle: form.marketingAngle,   // "Original" | "Urgency" | "Authority" | ...
+      funnelStage: form.funnelStage,         // "Cold, Top of Funnel" | ...
+      adSource: form.adSource,               // "meta"
+      region: form.region,
+      adName: form.adName,
+      adNumber: form.adNumber,
+      answers: brand.answers,                // Brand Brain (persona, voice, funnel, goal…)
+      context: brand.context,                // business info (industry, brandName…)
+    };
+
+    setLoading(true);
+    try {
+      const res = await fetch(SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      setResult(data); // render it — always usable, even on fallback
+      return data;
+    } catch (e) {
+      console.warn("script test failed", e);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return { loading, result, testScript, setResult };
+}
+
+// -----------------------------------------------------------------------------
+// Example usage in your Script Lab component:
+//
+//   const { loading, result, testScript } = useTestScript();
+//
+//   <button disabled={loading}
+//     onClick={() => testScript({ brand, form })}>
+//     {loading ? "Analyzing…" : "Test Script"}
+//   </button>
+//
+//   {result && (
+//     <div>
+//       <h3>{result.verdict_band} · {result.overall_score}/100</h3>
+//       <p>{result.verdict}</p>
+//
+//       {/* Emotional angle */}
+//       <div>
+//         <strong>{result.emotional_angle.label}</strong> — {result.emotional_angle.status}
+//         <p>{result.emotional_angle.critique}</p>
+//       </div>
+//       <button onClick={() => testScript({ brand, form })}>Regenerate</button>
+//
+//       {/* Context alignment — did it follow the brief? (Strong/Moderate/Weak) */}
+//       {/* result.context_alignment = { brand_voice_fit, funnel_stage_fit, marketing_angle_fit } */}
+//
+//       {/* Section breakdown (/10 each) — comments are angle-aware */}
+//       {result.section_breakdown.map((s) => (
+//         <div key={s.section}>{s.section}: {s.score}/10 — {s.comment}</div>
+//       ))}
+//
+//       {/* Dimension scores (/100) — drives What Worked / What to Fix. */}
+//       {/* result.dimension_scores = { attention, resonance, conversion, creative, marketing_angle_execution } */}
+//       {/* marketing_angle_execution = did the script stay true to the chosen angle end-to-end */}
+//
+//       {/* Improvements */}
+//       {result.improvements.map((imp, i) => (
+//         <div key={i}>
+//           <strong>{imp.title}</strong>
+//           <p>{imp.why_it_matters}</p>
+//           <pre>{imp.suggested_rewrite}</pre>
+//           <small>Metrics: {imp.metrics_impacted}</small>
+//         </div>
+//       ))}
+//     </div>
+//   )}
+//
+// `result.fallback === true` means the AI review didn't complete — still renders a
+// neutral scorecard; show a subtle "couldn't analyze — try again" note if you like.
+// -----------------------------------------------------------------------------

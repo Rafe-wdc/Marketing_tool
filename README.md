@@ -21,6 +21,7 @@ Health) can actually use.
 | 1 | `POST /api/brand-brain/rewrite-persona` | Rewrites the rough **"Who is the ideal customer?"** draft into a sharp 3–5 sentence persona — fixes spelling/grammar, sharpens it using the business context, never invents facts. |
 | 2 | `POST /api/brand-brain/suggest-funnel` | Generates the **lead-to-sale funnel** as an ordered list of stages (plus a tidied journey narrative). Works even if the journey box is empty. |
 | 3 | `POST /api/brand-brain/analyze-gaps` | Analyzes every answer and surfaces the **missing context** as multi-select follow-up questions. Supports a **Reanalyze** action that returns fresh gaps. |
+| 4 | `POST /api/script-lab/test-script` | **Script Lab.** Reviews an ad script against the brand's Brand Brain context (given a marketing angle + funnel stage) and returns a scorecard: overall score, emotional-angle verdict, section-by-section /10 breakdown, dimension scores, and improvements with rewrites. |
 
 Every endpoint is **non-blocking**: on any error (bad key, timeout, Gemini
 outage) it still returns HTTP `200` with `"fallback": true` and a safe default,
@@ -167,6 +168,60 @@ Same `answers` + `context` as above, plus:
 To **Reanalyze**, resend with the returned `title` values in `exclude` — the AI
 then returns different gaps instead of repeating itself.
 
+### 4. Test script (Script Lab)
+
+`POST /api/script-lab/test-script`
+
+Reviews an ad script against the brand's Brand Brain context. Your app loads the
+brand's `answers` + `context` by `brand_id` and forwards them with the script and
+the sales-team selections. **Slower (~15–25s)** — show a loading state.
+
+```json
+{
+  "script": "Many professionals aspire for board roles. Few intentionally prepare...",
+  "marketingAngle": "Authority",
+  "funnelStage": "Cold, Top of Funnel",
+  "adSource": "meta",
+  "answers": {
+    "businessType": "Education / Coaching / Consulting",
+    "idealCustomer": "Senior executives aged 40-55 preparing for board roles.",
+    "brandVoice": "Professional / Authoritative",
+    "marketingGoal": "Lead quality (higher intent)"
+  },
+  "context": { "industry": "Education / Coaching", "brandName": "Director's Institute" }
+}
+```
+
+```json
+{
+  "overall_score": 62,
+  "verdict": "Needs work before going live. Too generic for a cold audience.",
+  "verdict_band": "Needs work before going live",
+  "emotional_angle": { "label": "Authority", "status": "ANGLE WEAK", "critique": "…" },
+  "context_alignment": { "brand_voice_fit": "Moderate", "funnel_stage_fit": "Strong", "marketing_angle_fit": "Weak" },
+  "dimension_scores": { "attention": 50, "resonance": 60, "conversion": 65, "creative": 55, "marketing_angle_execution": 40 },
+  "section_breakdown": [ { "section": "Hook", "score": 5, "comment": "…" } ],
+  "improvements": [
+    { "title": "Strengthen the Hook", "why_it_matters": "…",
+      "suggested_rewrite": "…", "metrics_impacted": "3-sec view rate, retention" }
+  ],
+  "fallback": false
+}
+```
+
+`marketingAngle`: Original · Urgency · Authority · Social Proof · Pain Point · Aspiration.
+`funnelStage`: Cold, Top of Funnel · Warm, Middle of Funnel · Hot, Bottom of Funnel · Retargeting.
+
+**Both the marketing angle and the funnel stage are treated as the creative brief**,
+not just labels. The review judges whether the script *stayed faithful to the chosen
+angle and stage* throughout — every section comment, the `marketing_angle_execution`
+score, and the `context_alignment` ratings (`brand_voice_fit`, `funnel_stage_fit`,
+`marketing_angle_fit`). A well-written script that misses the brief scores low — e.g.
+an Aspirational script submitted as "Authority" is flagged `ANGLE OFF`, and a Cold
+script that says "as you already know…" gets a `Weak` `funnel_stage_fit`. The prompt
+includes explicit definitions for all six angles and all four funnel stages so the
+scoring stays consistent.
+
 **All request fields are optional.** Empty values are skipped rather than sent as
 blanks, so a partially-filled questionnaire still produces useful output.
 
@@ -177,7 +232,7 @@ blanks, so a partially-filled questionnaire still produces useful output.
 | File | Purpose |
 |------|---------|
 | `FRONTEND_HANDOFF.md` | Full wiring guide — config, state mapping, save schema, checklist. |
-| `frontend-integration.example.jsx` | React hooks for features 1 & 2. |
+| `frontend-integration.example.jsx` | React hooks for all four features (persona, funnel, gaps, script test). |
 | `frontend/Step11GapAnalysis.jsx` | Drop-in React component for the gap-analysis step. |
 
 When onboarding finishes, persist these on the brand record so the downstream AI

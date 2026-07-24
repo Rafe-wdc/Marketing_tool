@@ -6,6 +6,7 @@ brand onboarding, both powered by **Google Gemini**:
 1. `POST /api/brand-brain/rewrite-persona` — rewrites the Q02 "ideal customer" draft.
 2. `POST /api/brand-brain/suggest-funnel` — generates the Q10 lead-to-sale funnel.
 3. `POST /api/brand-brain/analyze-gaps` — finds missing-context follow-ups for Step 11.
+4. `POST /api/script-lab/test-script` — reviews an ad script against the brand context (Script Lab).
 
 This is a **standalone backend service**. The frontend (React) just calls these two
 HTTP endpoints. Nothing else in the app changes.
@@ -146,16 +147,50 @@ Response:
 }
 ```
 
-**All fields are optional except where noted.** All three endpoints are
+### `POST /api/script-lab/test-script`
+Reviews an ad script against the brand context. **Slower (~15–25s)** — it uses a
+longer 45s upstream timeout, so make sure any proxy in front of it allows at least
+that (see below).
+Request:
+```json
+{
+  "script": "the ad script (max 8000 chars)",
+  "marketingAngle": "Authority",
+  "funnelStage": "Cold, Top of Funnel",
+  "adSource": "meta", "region": "string", "adName": "string", "adNumber": "string",
+  "answers": { "...Brand Brain, loaded by brand_id and forwarded..." },
+  "context": { "...business info..." }
+}
+```
+Response:
+```json
+{
+  "overall_score": 62,
+  "verdict": "string", "verdict_band": "string",
+  "emotional_angle": { "label": "string", "status": "ANGLE WEAK", "critique": "string" },
+  "context_alignment": { "brand_voice_fit": "Moderate", "funnel_stage_fit": "Strong", "marketing_angle_fit": "Weak" },
+  "dimension_scores": { "attention": 50, "resonance": 60, "conversion": 65, "creative": 55, "marketing_angle_execution": 40 },
+  "section_breakdown": [ { "section": "Hook", "score": 5, "comment": "string" } ],
+  "improvements": [ { "title": "string", "why_it_matters": "string",
+                      "suggested_rewrite": "string", "metrics_impacted": "string" } ],
+  "fallback": false
+}
+```
+
+**All fields are optional except where noted.** All four endpoints are
 **non-blocking**: on any error they still return HTTP 200 with `"fallback": true`
-and a safe default (raw draft / generic funnel / generic gaps), so onboarding
-never gets stuck.
+and a safe default (raw draft / generic funnel / generic gaps / neutral scorecard),
+so the UI never gets stuck.
+
+> **Proxy note:** `test-script` can take ~15–25s. If it sits behind Nginx/Caddy,
+> set the proxy read timeout to ≥60s (e.g. Nginx `proxy_read_timeout 60s;`) or the
+> proxy may cut the connection before the AI responds.
 
 ## 7. Files
 
 | File | Purpose |
 |------|---------|
-| `app.py` | The whole service (both endpoints). |
+| `app.py` | The whole service (all four endpoints). |
 | `requirements.txt` | Python dependencies. |
 | `.env.example` | Config template → copy to `.env`. |
 | `frontend-integration.example.jsx` | React hooks the frontend uses to call the endpoints. |
