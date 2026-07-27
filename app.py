@@ -18,14 +18,17 @@ Your React frontend POSTs to:
 
 import os
 import json
+import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
+from motor.motor_asyncio import AsyncIOMotorClient
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -43,6 +46,30 @@ if not GEMINI_API_KEY:
 
 # One reusable Gemini client for the whole app. `.aio` gives us the async client.
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+# ---------------------------------------------------------------------------
+# MongoDB (Atlas) — stores the Brand Brain, keyed by a unique brand_brain_id.
+# OPTIONAL: if MONGODB_URI is unset the app still runs; only the Brand Brain
+# store/load endpoints are disabled (they return 503). motor = async driver, so
+# DB calls don't block the FastAPI event loop.
+# ---------------------------------------------------------------------------
+MONGODB_URI = os.environ.get("MONGODB_URI")
+MONGODB_DB = os.environ.get("MONGODB_DB", "scaleserum")
+
+if MONGODB_URI:
+    mongo_client = AsyncIOMotorClient(MONGODB_URI)
+    brand_brains = mongo_client[MONGODB_DB]["brand_brains"]
+else:
+    mongo_client = None
+    brand_brains = None
+
+
+def _require_mongo():
+    if brand_brains is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Brand Brain storage is not configured. Set MONGODB_URI in the environment.",
+        )
 
 app = FastAPI(title="Brand Brain Persona Rewriter", version="1.0.0")
 
@@ -149,19 +176,38 @@ class GapResponse(BaseModel):
     fallback: bool = False
 
 
+# ---- Brand Brain storage (MongoDB) ----------------------------------------
+class BrandBrainSaveRequest(BaseModel):
+    """The full Brand Brain to persist: the answers + business context."""
+    answers: BrandBrainAnswers = Field(default_factory=BrandBrainAnswers)
+    context: BrandContext = Field(default_factory=BrandContext)
+
+
+class BrandBrainSaveResponse(BaseModel):
+    brand_brain_id: str   # give this to the main backend to store on its brand record
+
+
+class BrandBrainDoc(BaseModel):
+    brand_brain_id: str
+    answers: BrandBrainAnswers
+    context: BrandContext
+
+
 # ---- Script Lab: test / review an ad script -------------------------------
 class ScriptTestRequest(BaseModel):
     """An ad script plus the sales-team selections, reviewed against the brand's
-    full Brand Brain context (answers + context)."""
+    full Brand Brain context. Pass `brand_brain_id` to load the context from the
+    DB; or send `answers` + `context` inline (used as a fallback if no id / not found)."""
     script: str = ""                             # the ad script to review
-    marketingAngle: Optional[str] = None         # e.g. "Original", "Fear-based", "Story"
+    marketingAngle: Optional[str] = None         # e.g. "Original", "Authority"
     funnelStage: Optional[str] = None            # e.g. "Cold, Top of Funnel"
     adSource: Optional[str] = None               # e.g. "meta"
     region: Optional[str] = None
     adName: Optional[str] = None                 # metadata, echoed for reference
     adNumber: Optional[str] = None
-    answers: BrandBrainAnswers = Field(default_factory=BrandBrainAnswers)  # Brand Brain
-    context: BrandContext = Field(default_factory=BrandContext)           # business info
+    brand_brain_id: Optional[str] = None         # preferred: load context from Mongo by this id
+    answers: BrandBrainAnswers = Field(default_factory=BrandBrainAnswers)  # inline fallback
+    context: BrandContext = Field(default_factory=BrandContext)           # inline fallback
 
 
 class EmotionalAngle(BaseModel):
@@ -558,6 +604,64 @@ async def analyze_gaps(body: GapRequest):
 
 
 # ---------------------------------------------------------------------------
+# Brand Brain storage: persist the Brand Brain and hand back a brand_brain_id
+# (the main backend stores step 1-3 itself; the Brand Brain lives here).
+# ---------------------------------------------------------------------------
+@app.post("/api/brand-brain/save", response_model=BrandBrainSaveResponse)
+async def save_brand_brain(body: BrandBrainSaveRequest):
+    """Called at 'Finish & Train AI'. Stores the Brand Brain, returns a new
+    unique brand_brain_id for the main backend to keep on its brand record."""
+    _require_mongo()
+    brand_brain_id = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    await brand_brains.insert_one(
+        {
+            "_id": brand_brain_id,
+            "answers": body.answers.model_dump(),
+            "context": body.context.model_dump(),
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    return BrandBrainSaveResponse(brand_brain_id=brand_brain_id)
+
+
+@app.put("/api/brand-brain/{brand_brain_id}", response_model=BrandBrainSaveResponse)
+async def update_brand_brain(brand_brain_id: str, body: BrandBrainSaveRequest):
+    """Update (or create) the Brand Brain for an existing id - e.g. if the user
+    edits the brand later."""
+    _require_mongo()
+    now = datetime.now(timezone.utc)
+    await brand_brains.update_one(
+        {"_id": brand_brain_id},
+        {
+            "$set": {
+                "answers": body.answers.model_dump(),
+                "context": body.context.model_dump(),
+                "updated_at": now,
+            },
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+    )
+    return BrandBrainSaveResponse(brand_brain_id=brand_brain_id)
+
+
+@app.get("/api/brand-brain/{brand_brain_id}", response_model=BrandBrainDoc)
+async def get_brand_brain(brand_brain_id: str):
+    """Fetch a stored Brand Brain (handy for verifying / debugging)."""
+    _require_mongo()
+    doc = await brand_brains.find_one({"_id": brand_brain_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="brand_brain_id not found")
+    return BrandBrainDoc(
+        brand_brain_id=brand_brain_id,
+        answers=BrandBrainAnswers(**(doc.get("answers") or {})),
+        context=BrandContext(**(doc.get("context") or {})),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Script Lab: review an ad script against the brand's Brand Brain context
 # ---------------------------------------------------------------------------
 SCRIPT_SYSTEM_INSTRUCTION = """
@@ -744,13 +848,23 @@ def build_script_meta_block(body: "ScriptTestRequest") -> str:
 async def test_script(body: ScriptTestRequest):
     script = (body.script or "")[:MAX_SCRIPT].strip()
 
+    # Resolve the brand context: prefer the stored Brand Brain (by id); otherwise
+    # use whatever was sent inline in the request.
+    answers = body.answers
+    context = body.context
+    if body.brand_brain_id and brand_brains is not None:
+        doc = await brand_brains.find_one({"_id": body.brand_brain_id})
+        if doc:
+            answers = BrandBrainAnswers(**(doc.get("answers") or {}))
+            context = BrandContext(**(doc.get("context") or {}))
+
     prompt = "\n".join(
         [
             "BUSINESS CONTEXT:",
-            build_context_block(body.context),
+            build_context_block(context),
             "",
             "BRAND BRAIN (what this brand stands for):",
-            build_answers_block(body.answers),
+            build_answers_block(answers),
             "",
             "SALES-TEAM SELECTIONS FOR THIS TEST:",
             build_script_meta_block(body),

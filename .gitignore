@@ -31,6 +31,10 @@ yarn-error.log*
 *.log
 nohup.out
 
+# --- Tunnel binary (dev only, not part of the app) --------------------------
+cloudflared.exe
+*.exe
+
 # --- Editors / OS -----------------------------------------------------------
 .claude/settings.local.json
 .vscode/
