@@ -265,15 +265,21 @@ rough "ideal customer" description into a sharp, structured customer persona use
 to guide ad reviews, ad-script angle suggestions, and audience research.
 
 Rules:
+- Describe ONLY the customer: who they are, their core pain, their desired outcome,
+  and what makes them buy. Write in third person.
 - Fix all spelling and grammar.
-- Use the provided business context to sharpen the persona (who they are, their
-  core pain, their desired outcome, and what makes them buy).
+- Use the provided business context to sharpen the persona.
 - NEVER invent specific unsupported facts (exact ages, incomes, locations, brand
   claims) that are not present in the draft or context. Generalize instead.
-- Keep it concise: 3-5 sentences, third person, plain text.
-- No markdown, no headings, no bullet points, no preamble.
-- If the draft is empty, synthesize a plausible starter persona strictly from the
-  context provided.
+- IGNORE and NEVER echo any meta/UI/product text that may have leaked into the input -
+  e.g. app captions or instructions about how the AI is trained, feature names like
+  "Script Lab", "AI critique", "Research Watch", "Morning Briefing", "Brand Brain", or
+  phrases like "content-generation defaults" / "so copy sounds like the brand". The
+  persona must be about the CUSTOMER only, never about the tool or the platform.
+- Do NOT repeat sentences or phrases. Return exactly ONE clean paragraph.
+- Keep it concise: 3-5 sentences, plain text. No markdown, headings, bullets, or preamble.
+- If the draft is empty (or contains only such meta text), synthesize a plausible
+  starter persona strictly from the real business context provided.
 """.strip()
 
 # The exact shape we force Gemini to return: {"optimized_persona": "..."}
@@ -608,7 +614,7 @@ async def analyze_gaps(body: GapRequest):
 # (the main backend stores step 1-3 itself; the Brand Brain lives here).
 # ---------------------------------------------------------------------------
 @app.post("/api/brand-brain/save", response_model=BrandBrainSaveResponse)
-async def save_brand_brain(body: BrandBrainSaveRequest):
+async def _brand_brain(body: BrandBrainSaveRequest):
     """Called at 'Finish & Train AI'. Stores the Brand Brain, returns a new
     unique brand_brain_id for the main backend to keep on its brand record."""
     _require_mongo()
