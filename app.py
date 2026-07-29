@@ -23,8 +23,9 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
@@ -70,6 +71,31 @@ def _require_mongo():
             status_code=503,
             detail="Brand Brain storage is not configured. Set MONGODB_URI in the environment.",
         )
+
+
+# ---------------------------------------------------------------------------
+# API-key auth: every /api/* endpoint requires the "X-API-Key" request header.
+# Set API_KEY in .env to the secret you choose. If API_KEY is unset the API runs
+# OPEN (handy for local dev) and logs a warning at startup. /health stays open.
+# ---------------------------------------------------------------------------
+API_KEY = os.environ.get("API_KEY")
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+if not API_KEY:
+    print("WARNING: API_KEY is not set - the API is UNSECURED. Set API_KEY in .env to require a key.")
+
+
+async def require_api_key(provided: Optional[str] = Security(api_key_header)):
+    """Gate for all /api/* endpoints. Send the key in the 'X-API-Key' header."""
+    if not API_KEY:
+        return  # no key configured -> open (dev). Set API_KEY to enforce.
+    if not provided or provided != API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key. Send it in the 'X-API-Key' header.",
+        )
+
 
 app = FastAPI(title="Brand Brain Persona Rewriter", version="1.0.0")
 
@@ -316,7 +342,8 @@ async def health():
     return {"ok": True, "model": GEMINI_MODEL}
 
 
-@app.post("/api/brand-brain/rewrite-persona", response_model=RewriteResponse)
+@app.post("/api/brand-brain/rewrite-persona", response_model=RewriteResponse,
+          dependencies=[Depends(require_api_key)])
 async def rewrite_persona(body: RewriteRequest):
     draft = (body.draft or "")[:MAX_DRAFT].strip()
 
@@ -418,7 +445,8 @@ def build_answers_block(a: BrandBrainAnswers) -> str:
     return "\n".join(lines) if lines else "(no answers provided)"
 
 
-@app.post("/api/brand-brain/suggest-funnel", response_model=FunnelResponse)
+@app.post("/api/brand-brain/suggest-funnel", response_model=FunnelResponse,
+          dependencies=[Depends(require_api_key)])
 async def suggest_funnel(body: FunnelRequest):
     journey = (body.answers.journey or "")[:MAX_DRAFT].strip()
 
@@ -528,7 +556,8 @@ GAP_RESPONSE_SCHEMA = types.Schema(
 )
 
 
-@app.post("/api/brand-brain/analyze-gaps", response_model=GapResponse)
+@app.post("/api/brand-brain/analyze-gaps", response_model=GapResponse,
+          dependencies=[Depends(require_api_key)])
 async def analyze_gaps(body: GapRequest):
     max_gaps = max(1, min(int(body.max_gaps or 3), 6))
     already_shown = ", ".join(body.exclude or []) or "(none)"
@@ -613,7 +642,8 @@ async def analyze_gaps(body: GapRequest):
 # Brand Brain storage: persist the Brand Brain and hand back a brand_brain_id
 # (the main backend stores step 1-3 itself; the Brand Brain lives here).
 # ---------------------------------------------------------------------------
-@app.post("/api/brand-brain/save", response_model=BrandBrainSaveResponse)
+@app.post("/api/brand-brain/save", response_model=BrandBrainSaveResponse,
+          dependencies=[Depends(require_api_key)])
 async def _brand_brain(body: BrandBrainSaveRequest):
     """Called at 'Finish & Train AI'. Stores the Brand Brain, returns a new
     unique brand_brain_id for the main backend to keep on its brand record."""
@@ -632,7 +662,8 @@ async def _brand_brain(body: BrandBrainSaveRequest):
     return BrandBrainSaveResponse(brand_brain_id=brand_brain_id)
 
 
-@app.put("/api/brand-brain/{brand_brain_id}", response_model=BrandBrainSaveResponse)
+@app.put("/api/brand-brain/{brand_brain_id}", response_model=BrandBrainSaveResponse,
+         dependencies=[Depends(require_api_key)])
 async def update_brand_brain(brand_brain_id: str, body: BrandBrainSaveRequest):
     """Update (or create) the Brand Brain for an existing id - e.g. if the user
     edits the brand later."""
@@ -653,7 +684,8 @@ async def update_brand_brain(brand_brain_id: str, body: BrandBrainSaveRequest):
     return BrandBrainSaveResponse(brand_brain_id=brand_brain_id)
 
 
-@app.get("/api/brand-brain/{brand_brain_id}", response_model=BrandBrainDoc)
+@app.get("/api/brand-brain/{brand_brain_id}", response_model=BrandBrainDoc,
+         dependencies=[Depends(require_api_key)])
 async def get_brand_brain(brand_brain_id: str):
     """Fetch a stored Brand Brain (handy for verifying / debugging)."""
     _require_mongo()
@@ -850,7 +882,8 @@ def build_script_meta_block(body: "ScriptTestRequest") -> str:
     return "\n".join(lines) if lines else "(no selections provided)"
 
 
-@app.post("/api/script-lab/test-script", response_model=ScriptTestResponse)
+@app.post("/api/script-lab/test-script", response_model=ScriptTestResponse,
+          dependencies=[Depends(require_api_key)])
 async def test_script(body: ScriptTestRequest):
     script = (body.script or "")[:MAX_SCRIPT].strip()
 
