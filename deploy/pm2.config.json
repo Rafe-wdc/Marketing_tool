@@ -2,33 +2,26 @@
   "//": [
     "Fallback pm2 process definition, used by deploy.sh only when pm2 has no",
     "process registered under PM2_NAME and there is no ecosystem.config.js on",
-    "the server. The live box already has ecosystem.config.js, which wins.",
+    "the server. The live box has ecosystem.config.js, which wins.",
     "",
     "  pm2 start /root/Marketing_tool/deploy/pm2.config.json",
     "  pm2 save",
     "",
-    "Paths are absolute because pm2 resolves 'interpreter' against its own cwd,",
-    "not the app's. Change them here and set APP_DIR to match if you move the app.",
+    "This mirrors how the live process is actually configured: pm2 runs app.py",
+    "directly through the virtualenv python, and app.py's __main__ block calls",
+    "uvicorn.run() itself. Host and port therefore come from .env (PORT, default",
+    "3001) — not from arguments here.",
     "",
-    "'interpreter' points at the virtualenv python — without it pm2 assumes node",
-    "and the process dies instantly with a syntax error."
+    "'interpreter' must point at the virtualenv python. Without it pm2 assumes",
+    "node and the process dies instantly with a syntax error."
   ],
 
   "apps": [
     {
       "name": "marketing-tool",
       "cwd": "/root/Marketing_tool",
-      "script": "/root/Marketing_tool/venv/bin/uvicorn",
+      "script": "/root/Marketing_tool/app.py",
       "interpreter": "/root/Marketing_tool/venv/bin/python",
-
-      "args": [
-        "app:app",
-        "--host", "127.0.0.1",
-        "--port", "3001",
-        "--workers", "2",
-        "--proxy-headers",
-        "--forwarded-allow-ips=127.0.0.1"
-      ],
 
       "exec_mode": "fork",
       "instances": 1,

@@ -127,6 +127,18 @@ FUNNEL STAGE DEFINITIONS (use these to judge alignment):
   remind them of the value, address likely hesitation, and give a compelling reason to
   return and act now.
 
+STAGE-FIT & ANGLE APPROPRIATENESS (judge this FIRST, before you score the angle):
+Match the message TYPE to the funnel stage - Cold/TOFU wins with a problem or curiosity
+hook, education, and SPECIFIC stat- or proof-led claims (GENERIC brand/credential boasting
+underperforms cold); Warm/MOFU wins with case studies, demos and social proof; Hot/BOFU
+wins with urgency, objection-handling and testimonials. A pain / story / curiosity hook on
+a COLD ad is CORRECT direct-response and must NOT be marked down merely for "not being" the
+chosen angle. If the CHOSEN marketing angle is a poor fit for this stage, SAY SO in the
+verdict and name the angle that would convert better here - do not just penalize the script
+for failing to match a suboptimal choice. When the chosen angle CAN work at this stage, the
+fix is almost always to execute it with SPECIFIC PROOF (numbers, named credentials,
+results), NOT to strip the working hook.
+
 MARKETING FRAMEWORK GROUNDING (diagnose and NAME these in your reasoning - do not just
 give generic opinions):
 - FIVE COPYWRITING PRINCIPLES - judge every section against these: (1) Clarity over
@@ -151,10 +163,18 @@ give generic opinions):
   funnel stage (Cold = low-commitment like watch/register; Hot = direct like book/buy).
   Flag weak CTAs: "Submit", "Sign Up", "Learn More", "Click Here", "Get Started".
 - Rewrite guardrail: every suggested_rewrite must read like a human direct-response
-  copywriter, NOT AI. Cut filler ("very", "really", "just", "actually", "basically",
-  "in order to") and swap corporate-speak: utilize->use, leverage->use, implement->set up,
-  facilitate->help, innovative->new, robust->strong, seamless->smooth; and never use
-  "unlock", "elevate", "delve", "game-changer", or "in today's world".
+  copywriter, NOT AI, and must be STRONGER than the line it replaces - if you cannot beat
+  the original, say to KEEP it rather than offering a flatter rewrite. Build authority or
+  proof with SPECIFIC evidence (real numbers, named credentials, concrete results), NEVER
+  vague puffery like "true industry leaders", "world-class", "strategic foresight only we
+  can provide". If a rewrite needs proof NOT present in the provided brand context, insert
+  a clear bracketed placeholder for the client to fill - e.g. "[your strongest proof - e.g.
+  # of alumni placed on boards]" - and NEVER fabricate a statistic, credential, or award
+  the client would then have to falsely claim. Cut filler ("very", "really", "just",
+  "actually", "basically", "in order
+  to") and swap corporate-speak: utilize->use, leverage->use, implement->set up,
+  facilitate->help, innovative->new, robust->strong, seamless->smooth; never use "unlock",
+  "elevate", "delve", "game-changer", or "in today's world".
 - In section comments and the emotional_angle critique, NAME the framework/principle you
   are applying (e.g. "this Hook reads as PAS, not the chosen Authority angle"; "fails
   Specificity over vagueness"; "awareness = Unaware, correct for a Cold audience").
