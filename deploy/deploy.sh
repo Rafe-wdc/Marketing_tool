@@ -6,7 +6,7 @@
 #
 # You can also run it by hand on the server for a manual deploy:
 #
-#     cd /opt/brand-brain && bash deploy/deploy.sh
+#     cd /root/Marketing_tool && bash deploy/deploy.sh
 #
 # What it does: enter the app directory, pull the exact commit CI verified,
 # install any missing dependencies, restart the pm2 process, health-check it —
@@ -14,8 +14,10 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/brand-brain}"
-PM2_NAME="${PM2_NAME:-brand-brain}"
+# Defaults match the live server: /root/Marketing_tool, pm2 process
+# "marketing-tool", virtualenv in venv/. Override any of them with repo variables.
+APP_DIR="${APP_DIR:-/root/Marketing_tool}"
+PM2_NAME="${PM2_NAME:-marketing-tool}"
 BRANCH="${BRANCH:-main}"
 DEPLOY_SHA="${DEPLOY_SHA:-}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3001/health}"
@@ -25,6 +27,11 @@ PYTHON="${PYTHON:-python3}"
 log() { printf '\n==> %s\n' "$*"; }
 
 # --- preflight --------------------------------------------------------------
+if [ ! -d "$APP_DIR" ]; then
+  echo "ERROR: APP_DIR '$APP_DIR' does not exist on $(hostname)." >&2
+  echo "       Set the APP_DIR repository variable to the real path." >&2
+  exit 1
+fi
 cd "$APP_DIR"
 
 if [ ! -d .git ]; then
@@ -32,9 +39,17 @@ if [ ! -d .git ]; then
   exit 1
 fi
 
+# The venv is venv/ on this server; .venv/ is what a fresh setup creates. Use
+# whichever is already there so a deploy never builds a second one alongside it.
+if   [ -x venv/bin/python ];  then VENV="venv"
+elif [ -x .venv/bin/python ]; then VENV=".venv"
+else VENV="${VENV:-venv}"
+fi
+
+# Not fatal: config may come from the pm2 ecosystem file's env block instead of a
+# .env file. If it is genuinely missing, the health check below catches it.
 if [ ! -f .env ]; then
-  echo "ERROR: $APP_DIR/.env is missing — the service cannot start without GEMINI_API_KEY." >&2
-  exit 1
+  echo "WARNING: $APP_DIR/.env not found — assuming pm2 supplies the environment." >&2
 fi
 
 # pm2 is per-user: root's pm2 and deploy's pm2 are separate daemons with separate
@@ -100,16 +115,16 @@ release() {
   git checkout --quiet "$BRANCH" 2>/dev/null || git checkout --quiet -B "$BRANCH" "origin/$BRANCH"
   git reset --hard --quiet "$sha"
 
-  if [ ! -x .venv/bin/python ]; then
-    log "Creating virtualenv"
-    "$PYTHON" -m venv .venv
+  if [ ! -x "$VENV/bin/python" ]; then
+    log "Creating virtualenv at $VENV"
+    "$PYTHON" -m venv "$VENV"
   fi
 
   # pip only downloads what is missing or version-mismatched, so this is cheap on
   # a deploy that did not touch requirements.txt.
-  log "Installing dependencies"
-  .venv/bin/python -m pip install --quiet --upgrade pip
-  .venv/bin/python -m pip install --quiet -r requirements.txt
+  log "Installing dependencies into $VENV"
+  "$VENV/bin/python" -m pip install --quiet --upgrade pip
+  "$VENV/bin/python" -m pip install --quiet -r requirements.txt
 
   if [ "$(id -u)" -eq 0 ] && [ "$OWNER" != "root:root" ]; then
     log "Restoring ownership to $OWNER"
@@ -117,13 +132,24 @@ release() {
   fi
 
   # 'pm2 restart' fails if the process was never registered (first deploy, or the
-  # pm2 daemon was reset), so fall back to starting it from the config file.
+  # pm2 daemon was reset), so fall back to the ecosystem file already on the box —
+  # it is untracked, so 'git reset --hard' above leaves it alone.
   if pm2 describe "$PM2_NAME" >/dev/null 2>&1; then
     log "Restarting pm2 process $PM2_NAME"
     pm2 restart "$PM2_NAME" --update-env
   else
-    log "pm2 process $PM2_NAME not found — starting it from deploy/pm2.config.json"
-    pm2 start deploy/pm2.config.json
+    local cfg=""
+    for candidate in ecosystem.config.js ecosystem.config.json deploy/pm2.config.json; do
+      [ -f "$candidate" ] && { cfg="$candidate"; break; }
+    done
+    if [ -z "$cfg" ]; then
+      echo "ERROR: pm2 has no process named '$PM2_NAME' and no config file to start it from." >&2
+      echo "       'pm2 list' as $(whoami) shows what is registered — set the PM2_NAME" >&2
+      echo "       repository variable to one of those names." >&2
+      exit 1
+    fi
+    log "pm2 process $PM2_NAME not found — starting it from $cfg"
+    pm2 start "$cfg"
   fi
 
   # Persist the process list so it survives a reboot (needs 'pm2 startup' once).

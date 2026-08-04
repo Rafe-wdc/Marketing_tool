@@ -11,9 +11,10 @@ name: Deploy to server
 #   SSH_PASSWORD      password for SSH_USER (the Vultr root password)
 #   SSH_KNOWN_HOSTS   output of: ssh-keyscan -p 22 <server-ip>   (recommended)
 #
-# Optional repository variables (same page, "Variables" tab) — defaults shown:
-#   SSH_USER=root   SSH_PORT=22   APP_DIR=/opt/brand-brain   PM2_NAME=brand-brain
-#   HEALTH_URL=http://127.0.0.1:3001/health
+# Optional repository variables (same page, "Variables" tab) — defaults shown,
+# and the defaults already match the live server:
+#   SSH_USER=root   SSH_PORT=22   APP_DIR=/root/Marketing_tool
+#   PM2_NAME=marketing-tool   HEALTH_URL=http://127.0.0.1:3001/health
 #
 # One-time server setup: see deploy/README.md
 
@@ -114,8 +115,8 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ vars.SSH_USER || 'root' }}
           SSH_PORT: ${{ vars.SSH_PORT || '22' }}
-          APP_DIR: ${{ vars.APP_DIR || '/opt/brand-brain' }}
-          PM2_NAME: ${{ vars.PM2_NAME || 'brand-brain' }}
+          APP_DIR: ${{ vars.APP_DIR || '/root/Marketing_tool' }}
+          PM2_NAME: ${{ vars.PM2_NAME || 'marketing-tool' }}
           HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:3001/health' }}
           BRANCH: ${{ github.ref_name }}
         run: |
@@ -139,5 +140,5 @@ jobs:
             echo ""
             echo "- Commit: \`${{ github.sha }}\`"
             echo "- Branch: \`${{ github.ref_name }}\`"
-            echo "- Target: \`${{ vars.APP_DIR || '/opt/brand-brain' }}\` (pm2 process \`${{ vars.PM2_NAME || 'brand-brain' }}\`)"
+            echo "- Target: \`${{ vars.APP_DIR || '/root/Marketing_tool' }}\` (pm2 process \`${{ vars.PM2_NAME || 'marketing-tool' }}\`)"
           } >> "$GITHUB_STEP_SUMMARY"
