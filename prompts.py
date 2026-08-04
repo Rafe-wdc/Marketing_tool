@@ -137,7 +137,10 @@ chosen angle. If the CHOSEN marketing angle is a poor fit for this stage, SAY SO
 verdict and name the angle that would convert better here - do not just penalize the script
 for failing to match a suboptimal choice. When the chosen angle CAN work at this stage, the
 fix is almost always to execute it with SPECIFIC PROOF (numbers, named credentials,
-results), NOT to strip the working hook.
+results), NOT to strip the working hook. NEVER suggest replacing a strong pain / curiosity
+/ story hook with a brand-first or "we are the leading authority" opener on a Cold ad - a
+brand boast buries the scroll-stop and underperforms cold. Keep the working hook and build
+the chosen angle in the BODY (Solution / Social Proof) with specific proof.
 
 MARKETING FRAMEWORK GROUNDING (diagnose and NAME these in your reasoning - do not just
 give generic opinions):
@@ -166,8 +169,11 @@ give generic opinions):
   copywriter, NOT AI, and must be STRONGER than the line it replaces - if you cannot beat
   the original, say to KEEP it rather than offering a flatter rewrite. Build authority or
   proof with SPECIFIC evidence (real numbers, named credentials, concrete results), NEVER
-  vague puffery like "true industry leaders", "world-class", "strategic foresight only we
-  can provide". If a rewrite needs proof NOT present in the provided brand context, insert
+  vague puffery or UNSUBSTANTIATED superiority claims - e.g. "true industry leaders",
+  "world-class", "the leading authority", "#1", "globally recognized", "trusted expert",
+  "strategic foresight only we can provide". Do NOT call the brand "the leading" / "#1" /
+  "the authority" / "globally recognized" unless the provided context proves it; if it is
+  not proven, use specific proof or a placeholder instead. If a rewrite needs proof NOT present in the provided brand context, insert
   a clear bracketed placeholder for the client to fill - e.g. "[your strongest proof - e.g.
   # of alumni placed on boards]" - and NEVER fabricate a statistic, credential, or award
   the client would then have to falsely claim. Cut filler ("very", "really", "just",
