@@ -114,20 +114,46 @@ jobs:
           # ssh looks up "host" on port 22 and "[host]:port" on any other port.
           if [ "$SSH_PORT" = "22" ]; then lookup="$SSH_HOST"; else lookup="[$SSH_HOST]:$SSH_PORT"; fi
 
-          if ssh-keygen -F "$lookup" -f ~/.ssh/known_hosts >/dev/null 2>&1; then
-            echo "Pinned host key found. Key types in the secret:"
-            awk '{print "  " $2}' ~/.ssh/known_hosts | sort -u
+          # Which key types are pinned FOR THIS HOST (not just present in the file).
+          pinned=$(ssh-keygen -F "$lookup" -f ~/.ssh/known_hosts 2>/dev/null \
+                   | awk '!/^#/ && NF {print $2}' | sort -u)
+          # ssh-keyscan emits "# host:port SSH-2.0-..." banner lines on stdout in
+          # some builds, so skip comments or the host:port lands in the type list.
+          offered=$(ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" 2>/dev/null \
+                   | awk '!/^#/ && NF {print $2}' | sort -u)
+
+          if [ -n "$pinned" ]; then
+            # Matching the host is not enough: a modern client will not negotiate
+            # ssh-rsa (SHA-1, disabled by default), so a secret holding only the
+            # ssh-rsa line still fails with "No ED25519 host key is known".
+            missing=""
+            if [ -n "$offered" ]; then
+              missing=$(comm -23 <(printf '%s\n' "$offered") <(printf '%s\n' "$pinned"))
+            fi
+
+            if printf '%s\n' "$missing" | grep -qx 'ssh-ed25519'; then
+              echo "::error::The pinned host key is incomplete — the server offers an ed25519 key but SSH_KNOWN_HOSTS does not contain it, which is what OpenSSH negotiates first."
+              echo "Pinned for this host: $(printf '%s ' $pinned)"
+              echo "Offered by server:    $(printf '%s ' $offered)"
+              echo "Missing:              $(printf '%s ' $missing)"
+              echo ""
+              echo "ssh-keyscan prints one line per key type. Paste ALL of them into"
+              echo "the secret, not just the first."
+              exit 1
+            fi
+
+            [ -n "$missing" ] && echo "::warning::Not pinned (harmless, the client will not negotiate them): $(printf '%s ' $missing)"
+            echo "Pinned host key found. Key types pinned for this host: $(printf '%s ' $pinned)"
             echo "STRICT=yes" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          # No matching entry — say exactly why rather than letting ssh fail with a
-          # bare "Host key verification failed" and exit 255.
+          # No matching entry at all — say exactly why rather than letting ssh fail
+          # with a bare "Host key verification failed" and exit 255.
           echo "::error::SSH_KNOWN_HOSTS has no entry matching this host, so strict checking cannot pass."
           echo "Lines in the secret:      $(wc -l < ~/.ssh/known_hosts)"
-          echo "Key types in the secret:  $(awk '{print $2}' ~/.ssh/known_hosts | sort -u | tr '\n' ' ')"
-          echo "Key types the server offers:"
-          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" 2>/dev/null | awk '{print "  " $2}' | sort -u
+          echo "Key types in the secret:  $(awk '!/^#/ && NF {print $2}' ~/.ssh/known_hosts | sort -u | tr '\n' ' ')"
+          echo "Key types the server offers: $(printf '%s ' $offered)"
           echo ""
           echo "The host names in the secret are compared literally against SSH_HOST."
           echo "Both are masked in this log, so check them yourself — the usual causes are:"
