@@ -252,7 +252,10 @@ reads the improved context:
 
 ## Deployment
 
-See **`HANDOFF.md`** for the full server setup guide.
+See **`HANDOFF.md`** for the full server setup guide, and **`deploy/README.md`** for
+the automated pipeline: pushing to `main` triggers a GitHub Action that SSHes into
+the server, pulls the commit, reinstalls dependencies, restarts the systemd service
+and health-checks it — rolling back automatically if the new commit doesn't boot.
 
 Recommended sizing: **1 vCPU · 2 GB RAM · 20 GB SSD**. The service is I/O-bound —
 it spends its time waiting on Gemini, not computing — so it stays light even
@@ -274,8 +277,14 @@ Internet → Nginx/Caddy (TLS) → Gunicorn + Uvicorn workers → Gemini API
 ├── HANDOFF.md                        # server/backend setup guide
 ├── FRONTEND_HANDOFF.md               # frontend wiring guide
 ├── frontend-integration.example.jsx  # React hooks (features 1 & 2)
-└── frontend/
-    └── Step11GapAnalysis.jsx         # drop-in gap-analysis component
+├── frontend/
+│   └── Step11GapAnalysis.jsx         # drop-in gap-analysis component
+├── .github/workflows/deploy.yml      # CI/CD — deploys to the server on push to main
+└── deploy/
+    ├── README.md                     # server setup + GitHub secrets guide
+    ├── deploy.sh                     # runs on the server: pull, install, restart, health-check
+    ├── brand-brain.service           # systemd unit
+    └── nginx.conf.example            # reverse proxy + TLS front
 ```
 
 ## Security notes

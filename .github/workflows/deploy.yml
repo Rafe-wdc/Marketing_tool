@@ -1,0 +1,143 @@
+name: Deploy to server
+
+# Deploys the Brand Brain FastAPI service to a Vultr VPS over SSH (password auth).
+#
+# Flow:  push to main  ->  verify (install + import app.py)  ->  ssh root@IP, cd
+#        into the app directory, pull the exact commit, install missing deps,
+#        pm2 restart, health-check, roll back automatically if it fails.
+#
+# Required repository secrets  (Settings -> Secrets and variables -> Actions):
+#   SSH_HOST          server IP or hostname
+#   SSH_PASSWORD      password for SSH_USER (the Vultr root password)
+#   SSH_KNOWN_HOSTS   output of: ssh-keyscan -p 22 <server-ip>   (recommended)
+#
+# Optional repository variables (same page, "Variables" tab) — defaults shown:
+#   SSH_USER=root   SSH_PORT=22   APP_DIR=/opt/brand-brain   PM2_NAME=brand-brain
+#   HEALTH_URL=http://127.0.0.1:3001/health
+#
+# One-time server setup: see deploy/README.md
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'frontend/**'
+      - 'frontend-integration.example.jsx'
+      - '.gitignore'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Import the app
+        # Catches syntax / import / prompt-file errors before anything touches the
+        # server. A dummy key is enough — the Gemini client makes no call on init,
+        # and MONGODB_URI is left unset so no DB connection is attempted.
+        env:
+          GEMINI_API_KEY: ci-import-check-not-a-real-key
+        run: python -c "import app; print('OK -', len(app.app.routes), 'routes')"
+
+  deploy:
+    name: Deploy
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+        run: |
+          missing=""
+          [ -n "$SSH_HOST" ]     || missing="$missing SSH_HOST"
+          [ -n "$SSH_PASSWORD" ] || missing="$missing SSH_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — see deploy/README.md"
+            exit 1
+          fi
+
+      - name: Install sshpass
+        # Not preinstalled on the GitHub runner image.
+        run: |
+          command -v sshpass >/dev/null || {
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq sshpass
+          }
+          sshpass -V | head -1
+
+      - name: Pin the host key
+        env:
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            echo "STRICT=yes" >> "$GITHUB_ENV"
+          else
+            echo "::warning::SSH_KNOWN_HOSTS is not set — the root password is sent to whatever host answers, with no way to detect a man-in-the-middle. Set it with: ssh-keyscan -p $SSH_PORT $SSH_HOST"
+            ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+            echo "STRICT=accept-new" >> "$GITHUB_ENV"
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy and health-check
+        env:
+          # sshpass -e reads the password from SSHPASS, so it never appears in the
+          # process list the way `sshpass -p <password>` would.
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER || 'root' }}
+          SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+          APP_DIR: ${{ vars.APP_DIR || '/opt/brand-brain' }}
+          PM2_NAME: ${{ vars.PM2_NAME || 'brand-brain' }}
+          HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:3001/health' }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          # deploy.sh is piped in from this checkout, so the server always runs the
+          # version of the deploy script that ships with the commit being deployed.
+          # BatchMode is deliberately NOT set — it disables password authentication.
+          sshpass -e ssh -p "$SSH_PORT" \
+              -o PreferredAuthentications=password \
+              -o PubkeyAuthentication=no \
+              -o StrictHostKeyChecking="$STRICT" \
+              -o ConnectTimeout=15 \
+              "$SSH_USER@$SSH_HOST" \
+              "APP_DIR='$APP_DIR' PM2_NAME='$PM2_NAME' BRANCH='$BRANCH' DEPLOY_SHA='$GITHUB_SHA' HEALTH_URL='$HEALTH_URL' bash -s" \
+              < deploy/deploy.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy ${{ job.status }}"
+            echo ""
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Branch: \`${{ github.ref_name }}\`"
+            echo "- Target: \`${{ vars.APP_DIR || '/opt/brand-brain' }}\` (pm2 process \`${{ vars.PM2_NAME || 'brand-brain' }}\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
