@@ -97,15 +97,53 @@ jobs:
           SSH_PORT: ${{ vars.SSH_PORT || '22' }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          if [ -n "$SSH_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-            echo "STRICT=yes" >> "$GITHUB_ENV"
-          else
+
+          if [ -z "$SSH_KNOWN_HOSTS" ]; then
             echo "::warning::SSH_KNOWN_HOSTS is not set — the root password is sent to whatever host answers, with no way to detect a man-in-the-middle. Set it with: ssh-keyscan -p $SSH_PORT $SSH_HOST"
             ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+            chmod 644 ~/.ssh/known_hosts
             echo "STRICT=accept-new" >> "$GITHUB_ENV"
+            exit 0
           fi
+
+          # Strip CRs and blank lines: a secret pasted from Windows leaves \r on
+          # every line, which ssh treats as part of the key and silently ignores.
+          printf '%s\n' "$SSH_KNOWN_HOSTS" | tr -d '\r' | sed '/^[[:space:]]*$/d' > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
+
+          # ssh looks up "host" on port 22 and "[host]:port" on any other port.
+          if [ "$SSH_PORT" = "22" ]; then lookup="$SSH_HOST"; else lookup="[$SSH_HOST]:$SSH_PORT"; fi
+
+          if ssh-keygen -F "$lookup" -f ~/.ssh/known_hosts >/dev/null 2>&1; then
+            echo "Pinned host key found. Key types in the secret:"
+            awk '{print "  " $2}' ~/.ssh/known_hosts | sort -u
+            echo "STRICT=yes" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # No matching entry — say exactly why rather than letting ssh fail with a
+          # bare "Host key verification failed" and exit 255.
+          echo "::error::SSH_KNOWN_HOSTS has no entry matching this host, so strict checking cannot pass."
+          echo "Lines in the secret:      $(wc -l < ~/.ssh/known_hosts)"
+          echo "Key types in the secret:  $(awk '{print $2}' ~/.ssh/known_hosts | sort -u | tr '\n' ' ')"
+          echo "Key types the server offers:"
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" 2>/dev/null | awk '{print "  " $2}' | sort -u
+          echo ""
+          echo "The host names in the secret are compared literally against SSH_HOST."
+          echo "Both are masked in this log, so check them yourself — the usual causes are:"
+          echo "  1. Only one ssh-keyscan line was pasted. Paste ALL of them."
+          echo "  2. The scan used a hostname but SSH_HOST is an IP (or the reverse)."
+          echo "     They must be the same string."
+          echo "  3. The secret was pasted with Windows line endings (handled above,"
+          echo "     so this is no longer it) or with the lines joined into one."
+          echo ""
+          echo "Fix: run this locally and paste the complete output into SSH_KNOWN_HOSTS,"
+          echo "using the exact same host string you put in SSH_HOST:"
+          echo "    ssh-keyscan -p $SSH_PORT <the-value-of-SSH_HOST>"
+          echo ""
+          echo "To unblock right now, delete the SSH_KNOWN_HOSTS secret: the workflow"
+          echo "falls back to accept-new and warns instead of failing."
+          exit 1
 
       - name: Deploy and health-check
         env:

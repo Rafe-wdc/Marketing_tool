@@ -178,7 +178,7 @@ rather than fighting over the server.
 |---------|-------------|
 | `Missing repository secret(s)` | Secrets not set, or set on the wrong repo/environment. |
 | `Permission denied, please try again` | Wrong `SSH_PASSWORD`, or `PasswordAuthentication`/`PermitRootLogin` is `no` in `/etc/ssh/sshd_config`. |
-| `Host key verification failed` | `SSH_KNOWN_HOSTS` is stale — re-run `ssh-keyscan` (it changes if the server is rebuilt). |
+| `No ED25519 host key is known for ...` / `Host key verification failed` | `SSH_KNOWN_HOSTS` has no entry matching `SSH_HOST`. The **Pin the host key** step now catches this first and prints why. Usually only one `ssh-keyscan` line was pasted, or the scan used a hostname while `SSH_HOST` is an IP — the two strings are compared literally and must match exactly. Also re-run `ssh-keyscan` if the server was rebuilt; the keys change. |
 | `detected dubious ownership` | `git config --global --add safe.directory /root/Marketing_tool` as the deploying user. `deploy.sh` does this itself, so it usually means it ran on a different path. |
 | `pm2 is not on PATH` | pm2 installed under nvm, or not installed for `root`. See §1 above. |
 | `pm2 process not found — starting it` on every deploy | pm2 was started as a different user, or `PM2_NAME` does not match a name in `pm2 list`. Check as root. |
