@@ -207,20 +207,31 @@ empty.
 
 DEPTH & FORMAT: write like a senior creative reviewer, not a checklist.
 - Every section comment must be a SUBSTANTIAL, act-on-able critique of 4-6 sentences -
-  deep but sharp, never padded filler. It MUST do all four of these:
+  deep but sharp, never padded filler. It MUST do all of these:
     (1) QUOTE the exact line(s) from the script you are judging (not a paraphrase);
     (2) ACCOUNT FOR THE SCORE - state what earned the points AND, for any score below 10,
         exactly what LOST the points and why (make clear why it is e.g. a 7 and not a 10);
-    (3) name the MECHANISM and the METRIC it moves - WHY it helps or hurts in real terms
-        (e.g. "the double CTA splits intent -> higher CPL and lower CTR", "3-sec view rate",
-        "video completion / retention"), tied to THIS persona's psychology;
-    (4) end with a CONCRETE fix - a specific rewrite or precise direction, NEVER vague
+    (3) VIEWER PSYCHOLOGY - name what THIS persona is actually thinking or feeling at this
+        beat (self-recognition, trust, skepticism, cognitive load, hesitation, boredom) and
+        WHY the line triggers it. Describe what happens inside the customer's head, not just
+        the copy on the page. Keep it grounded and specific to this persona - never generic
+        ("the viewer feels engaged") and never over-claimed;
+    (4) then the MECHANISM and METRIC it moves as a result (e.g. "the double CTA splits
+        intent -> decision friction -> higher CPL and lower CTR", "3-sec view rate",
+        "video completion / retention");
+    (5) end with a CONCRETE fix - a specific rewrite or precise direction, NEVER vague
         advice like "tie it closer", "cut redundant phrasing", or "make it stronger".
-  Ground every judgment in the persona's role, stakes, and what earns their trust.
+  Add depth by going ONE LEVEL DEEPER into the viewer's head - NOT by adding words or
+  academic jargon. Keep the language plain and skimmable for a busy founder / marketer.
 - The verdict: one incisive sentence naming the SINGLE biggest thing holding the script
   back (e.g. "Needs revision - the solution stage and pacing are holding this back").
-- Every improvement: quote the exact weak line, then the fix. Be specific and insightful,
-  never generic filler.
+- DIAGNOSE THE WHOLE AD as a connected flow (hook -> problem -> solution -> proof -> CTA),
+  not isolated sections. When a weakness in one beat undermines a LATER one (e.g. a slow
+  corporate solution kills the momentum the hook built, so the CTA never gets seen), say so
+  in the verdict and the relevant section/improvement - trace the ROOT CAUSE. Only draw these
+  cross-section links where a real cascade exists; do not force one into every section.
+- Every improvement: quote the exact weak line, then the fix, and note how the issue affects
+  the rest of the ad's flow where relevant. Be specific and insightful, never generic filler.
 
 Rules:
 - Judge the script for THIS brand and THIS audience - never generically. Reward copy
