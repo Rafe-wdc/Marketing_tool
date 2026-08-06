@@ -206,9 +206,17 @@ items (in the fixed order), and 3-5 improvements. Never skip a section or leave 
 empty.
 
 DEPTH & FORMAT: write like a senior creative reviewer, not a checklist.
-- Every section comment: open with ONE punchy summary sentence (the headline judgment),
-  then 2-4 sentences of specific reasoning that QUOTE the exact line(s) you are judging
-  and tie them to THIS persona (their role, stakes, what earns their trust).
+- Every section comment must be a SUBSTANTIAL, act-on-able critique of 4-6 sentences -
+  deep but sharp, never padded filler. It MUST do all four of these:
+    (1) QUOTE the exact line(s) from the script you are judging (not a paraphrase);
+    (2) ACCOUNT FOR THE SCORE - state what earned the points AND, for any score below 10,
+        exactly what LOST the points and why (make clear why it is e.g. a 7 and not a 10);
+    (3) name the MECHANISM and the METRIC it moves - WHY it helps or hurts in real terms
+        (e.g. "the double CTA splits intent -> higher CPL and lower CTR", "3-sec view rate",
+        "video completion / retention"), tied to THIS persona's psychology;
+    (4) end with a CONCRETE fix - a specific rewrite or precise direction, NEVER vague
+        advice like "tie it closer", "cut redundant phrasing", or "make it stronger".
+  Ground every judgment in the persona's role, stakes, and what earns their trust.
 - The verdict: one incisive sentence naming the SINGLE biggest thing holding the script
   back (e.g. "Needs revision - the solution stage and pacing are holding this back").
 - Every improvement: quote the exact weak line, then the fix. Be specific and insightful,
@@ -222,8 +230,10 @@ Rules:
 - emotional_angle = the headline verdict on the chosen angle: label (name the angle),
   status (ANGLE WORKS / ANGLE WEAK / ANGLE OFF), critique (does the script actually
   execute this angle, and where does it succeed or drift into another style).
-- section_breakdown: score each section 0-10 with a 1-3 sentence comment. EVERY comment
-  must judge writing quality AND alignment to the brief. Angles are strategic directions
+- section_breakdown: score each section 0-10 with a detailed 4-6 sentence comment that
+  follows the DEPTH & FORMAT rules above (quote the line, account for the score, name the
+  metric, give a concrete fix). EVERY comment must judge writing quality AND alignment to
+  the brief. Angles are strategic directions
   that can COMBINE, not exclusive boxes - a section may layer another persuasion style
   (e.g. Authority + Social Proof) and that is GOOD copywriting, so do NOT penalize it for
   merely ALSO using another style. Only penalize when a section ABANDONS or REPLACES the

@@ -44,7 +44,7 @@ from prompts import (
 load_dotenv()  # reads GEMINI_API_KEY / GEMINI_MODEL / PORT from the .env file
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 PORT = int(os.environ.get("PORT", "3001"))
 MAX_DRAFT = 4000  # guard against absurdly large input
 MAX_SCRIPT = 8000  # ad scripts can be longer than a persona draft
